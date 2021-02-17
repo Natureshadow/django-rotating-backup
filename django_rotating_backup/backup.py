@@ -12,6 +12,7 @@ from pathlib import Path
 from shutil import copyfile
 
 from django.conf import settings
+from django.db.backends.postgresql.client import DatabaseClient as PgDatabaseClient
 
 from .exceptions import DRBConfigException
 
@@ -145,13 +146,10 @@ class RotatingBackup:
 
         if self.is_postgresql(name):
             with gzip.open(f'{destination}/{dump_filename}', 'wb') as backup_file:
-                host = settings.DATABASES[name]['HOST'] if not settings.DATABASES[name]['HOST'] == '' else '127.0.0.1'
-                port = settings.DATABASES[name]['PORT'] if not settings.DATABASES[name]['PORT'] == '' else '5432'
-
-                cmd = ['sh', '-c', 'PGPASSWORD=' + str(settings.DATABASES[name]['PASSWORD']) + ' pg_dump -h ' + host +
-                       ' -p ' + port + ' -U ' + settings.DATABASES[name]['USER'] + ' ' +
-                       settings.DATABASES[name]['NAME']]
-                popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+                _, env = PgDatabaseClient.settings_to_cmd_args_env(settings.DATABASES[name])
+                env.update(os.environ)
+                
+                popen = subprocess.Popen(['pg_dump'], stdout=subprocess.PIPE, universal_newlines=True)
 
                 for stdout_line in iter(popen.stdout.readline, ''):
                     backup_file.write(stdout_line.encode('utf-8'))
